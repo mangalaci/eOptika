@@ -1,0 +1,110 @@
+CREATE TABLE abc
+SELECT
+w.erp_invoice_id,
+w.reference_id,
+w.created,
+CASE
+WHEN SUM(w.stock_flg) = 0 THEN 'all out of stock'
+WHEN SUM(w.stock_flg) = q.order_quantity THEN 'in stock'
+WHEN SUM(w.stock_flg) < q.order_quantity THEN 'partially fulfilled'
+END AS fulfillment_rate
+FROM
+(
+SELECT
+b.item_id,
+b.erp_invoice_id,
+b.reference_id,
+b.created,
+b.CT1_SKU,
+b.CT1_SKU_name,
+q.order_quantity,
+t.actual_quantity,
+CASE WHEN t.actual_quantity > 0 THEN 1 ELSE 0 END stock_flg
+FROM BASE_09_TABLE b
+LEFT JOIN
+(
+SELECT
+b.erp_invoice_id, 
+COUNT(b.item_id) AS order_quantity
+FROM BASE_09_TABLE b
+WHERE b.origin = 'orders'
+AND b.is_canceled = 'no'
+AND erp_invoice_id = 'VO18/008764'
+GROUP BY erp_invoice_id
+) q
+ON b.erp_invoice_id = q.erp_invoice_id
+LEFT JOIN
+(
+SELECT m.item_sku, m.actual_quantity
+FROM
+(
+SELECT item_sku, MAX(processed) AS max_processed
+FROM inventory_report
+GROUP BY item_sku
+) s,
+inventory_report m
+WHERE (m.item_sku = s.item_sku AND m.processed = s.max_processed)
+) t
+ON b.CT1_SKU = t.item_sku
+WHERE b.origin = 'orders'
+AND b.is_canceled = 'no'
+) w
+GROUP BY erp_invoice_id
+;
+
+
+
+
+ellenorzes:
+
+SELECT 
+b.item_id,
+b.erp_invoice_id,
+b.created,
+b.CT1_SKU,
+b.CT1_SKU_name
+FROM BASE_09_TABLE b
+WHERE erp_invoice_id = 'VO18/008764'
+;
+
+
+
+SELECT m.item_sku, m.actual_quantity
+FROM  
+(
+SELECT item_sku, MAX(processed) AS max_processed
+FROM inventory_report
+GROUP BY item_sku
+) s,
+inventory_report m
+WHERE (m.item_sku = s.item_sku AND m.processed = s.max_processed)
+AND m.item_sku IN ('AOPHG386-0450', 'AOPHG386-0500')
+;
+
+
+____________________________________________________________________________________________________________________________________
+
+SELECT 	a.*
+FROM outgoing_bills a
+WHERE a.erp_id = 'SO17/TH01137'
+
+
+
+SELECT 	a.*
+FROM BASE_09_TABLE a
+WHERE a.erp_invoice_id = 'SO17/TH01137'
+
+
+
+SO17/TH00579
+SO17/TH01074
+SO17/TH01137
+SO17/TH01077
+SO17/TH01156
+
+
+
+
+
+
+

@@ -1,0 +1,51 @@
+supplier_lead_time_in_working_days:
+datediff("purchase_created","order_created") - ((weekofyear("purchase_created") - weekofyear("order_created")) * 2) + IF(weekday("order_created") = 5,1,0) - IF(weekofyear("order_created")=weekofyear("purchase_created"),IF(weekday("purchase_created") = 5,1,0),0)
+
+supplier_lead_time_in_calendar_days:
+datediff("purchase_created","order_created")
+
+hany_napja_varjuk_in_calendar_days:
+IF(isnull( "purchase_created")=1,datediff(currentdate( ),"order_created"),NULL)
+
+
+hany_napja_varjuk_in_working_days
+IF(isnull( "purchase_created")=1,datediff(currentdate(),"order_created") 
+- ((weekofyear(currentdate()) - weekofyear("order_created")) * 2) 
++ IF(weekday("order_created") = 5,1,0) 
+- IF(weekofyear(currentdate())=weekofyear("order_created"),IF(weekday(currentdate()) = 5,1,0),0),NULL)
+
+qty_still_waiting:
+IF(isnull("purchase_created")=1,"order_item_qty",NULL)
+
+
+item_net_value_still_waiting_in_base_currency:
+IF(isnull( "purchase_created")=1,"item_net_value_in_base_currency",NULL)
+
+
+
+eredeti:
+SELECT (DATEDIFF(date_end, date_start)) -
+        ((WEEK(date_end) - WEEK(date_start)) * 2) -
+        (case when weekday(date_end) = 6 then 1 else 0 end) -
+        (case when weekday(date_start) = 5 then 1 else 0 end) -
+        (SELECT COUNT(*) FROM holidays WHERE holiday>=date_start and holiday<=data_end)
+
+
+MYSQL:
+SELECT purchase_erp_id,
+	order_created, 
+    purchase_created,
+    WEEK(purchase_created),
+    WEEK(order_created),
+    weekday(purchase_created),
+    weekday(order_created),
+    DATEDIFF(purchase_created,order_created) AS calendar,
+    
+    DATEDIFF(purchase_created,order_created) -
+        ((WEEK(purchase_created) - WEEK(order_created)) * 2) +
+        (case when weekday(order_created) = 5 then 1 else 0 end) -
+        (case when weekday(purchase_created) = 5 AND WEEK(purchase_created) = WEEK(order_created) then 1 else 0 end)
+        AS asd
+FROM BASE_TABLE_PRODUCT_SUPPLY
+WHERE purchase_erp_id <> ''
+AND order_erp_id = 'R16/02156'

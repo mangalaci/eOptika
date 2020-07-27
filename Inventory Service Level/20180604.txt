@@ -1,0 +1,42 @@
+SELECT SUM(Ordered)
+FROM `inventory_service_level` 
+WHERE order_year = 2018
+AND order_month = 5
+AND product_group = 'Contact lenses'
+
+
+rendelés oldal:
+SELECT SUM(item_quantity)
+FROM BASE_03_TABLE 
+WHERE order_year = 2018
+AND order_month = 6
+AND order_day_in_month = 2
+AND CT1_SKU = 'AONDA386-0075'
+
+
+készlet oldal:
+SELECT *
+FROM inventory_report 
+WHERE item_sku = 'AONDA386-0075'
+ORDER BY processed DESC
+
+
+
+
+warehouse
+Teréz körút 41.
+Baross utca
+Eszközök - Teréz körút 41.
+Anyagok - Teréz körút 41.
+Sérültek - Teréz körút 41.
+Táblás utca 39.
+Nem találtuk! - Teréz körút 41.
+Foglalás - Teréz körút 41.
+Teréz körút 50.
+Foglalás - Teréz körút 50.
+Sérültek - Teréz körút 50.
+Nem találtuk! - Teréz körút 50.
+VW #01 - Teréz körút 41.
+Cloud Fulfilment
+Pueblo Torrequebrada
+OP

@@ -1,0 +1,245 @@
+/*1. A RABAT_xxxxxx sorok beolvasztása a tétel sorokba*/
+UPDATE
+  ORDERS_00f AS C
+  INNER JOIN (
+SELECT
+        t1.sql_id,
+		(t1.item_net_value_in_currency + t1.rabat_item_net_value_in_currency/t2.n) AS item_net_value_in_currency
+FROM
+(
+SELECT  a.sql_id,
+        b.sql_id AS rabat_sql_id,
+		a.item_net_value_in_currency,
+		b.item_net_value_in_currency AS rabat_item_net_value_in_currency
+FROM
+(
+SELECT *, 		
+		CASE 	WHEN SUBSTR(item_sku,1,2) = '17' THEN 'TAM' /*a szemvizsgálatok miatt kell ez a feltétel*/
+				ELSE item_sku 
+		END AS product_item_sku
+FROM ORDERS_00f
+WHERE item_type = 'T' OR (item_type = 'S' AND group_id NOT IN (139))
+) a 
+LEFT JOIN
+(
+SELECT  sql_id,
+		erp_id,
+		item_net_value_in_currency,
+        CASE WHEN LOCATE('RABAT-',item_sku) > 0 THEN SUBSTRING_INDEX(item_sku,'RABAT-',-1) /*a szemvizsgálatok miatt kell ez a feltétel*/
+        WHEN LOCATE('RABAT_',item_sku) > 0 THEN SUBSTRING_INDEX(item_sku,'RABAT_',-1)      
+        END AS service_item_sku
+FROM  ORDERS_00f
+WHERE item_sku LIKE 'RABAT_%' OR item_sku LIKE 'RABAT-%'
+) b
+ON a.erp_id = b.erp_id 
+WHERE LOCATE(b.service_item_sku, a.product_item_sku) > 0
+) t1,
+
+/*a t2 lekérdezés azért kell, mert ez adja meg, hogy hány darab valódi tételből kell levonni a RABAT tételt*/
+(
+SELECT
+        b.sql_id AS rabat_sql_id,
+        COUNT(b.erp_id)/num_of_rabat AS n
+FROM
+(
+SELECT *, 		
+		CASE 	WHEN SUBSTR(item_sku,1,2) = '17' THEN 'TAM' /*a szemvizsgálatok miatt kell ez a feltétel*/
+				ELSE item_sku 
+		END AS product_item_sku
+FROM ORDERS_00f
+WHERE item_type = 'T' OR (item_type = 'S' AND group_id NOT IN (139))
+) a 
+LEFT JOIN
+(
+SELECT  sql_id,
+		erp_id,
+		item_net_value_in_currency,
+        CASE 	WHEN LOCATE('RABAT-',item_sku) > 0 THEN SUBSTRING_INDEX(item_sku,'RABAT-',-1) /*a szemvizsgálatok miatt kell ez a feltétel*/
+				WHEN LOCATE('RABAT_',item_sku) > 0 THEN SUBSTRING_INDEX(item_sku,'RABAT_',-1)      
+        END AS service_item_sku
+FROM  ORDERS_00f
+WHERE item_sku LIKE 'RABAT_%' OR item_sku LIKE 'RABAT-%'
+) b 
+ON a.erp_id = b.erp_id
+LEFT JOIN
+(
+SELECT
+        x.sql_id,
+		COUNT(y.sql_id) AS num_of_rabat
+FROM
+(
+SELECT *, 		
+		CASE 	WHEN SUBSTR(item_sku,1,2) = '17' THEN 'TAM' /*a szemvizsgálatok miatt kell ez a feltétel*/
+				ELSE item_sku 
+		END AS product_item_sku
+FROM ORDERS_00f
+WHERE item_type = 'T' OR (item_type = 'S' AND group_id NOT IN (139))
+) x 
+LEFT JOIN
+(
+SELECT  sql_id,
+		erp_id,
+		item_quantity,
+		item_net_value_in_currency,
+        CASE 	WHEN LOCATE('RABAT-',item_sku) > 0 THEN SUBSTRING_INDEX(item_sku,'RABAT-',-1) /*a szemvizsgálatok miatt kell ez a feltétel*/
+				WHEN LOCATE('RABAT_',item_sku) > 0 THEN SUBSTRING_INDEX(item_sku,'RABAT_',-1)      
+        END AS service_item_sku
+FROM  ORDERS_00f
+WHERE item_sku LIKE 'RABAT_%' OR item_sku LIKE 'RABAT-%'
+) y
+ON x.erp_id = y.erp_id 
+WHERE LOCATE(y.service_item_sku, x.product_item_sku) > 0
+GROUP BY x.sql_id
+) c
+ON a.sql_id = c.sql_id
+WHERE LOCATE(b.service_item_sku, a.product_item_sku) > 0
+GROUP BY b.sql_id
+) t2
+WHERE t1.rabat_sql_id = t2.rabat_sql_id
+  ) as A on C.sql_id = A.sql_id
+SET C.item_net_value_in_currency = A.item_net_value_in_currency
+;
+
+/*1.2. A RABAT_ sor törlése: csak azokat a RABAT_ sorokat kell törölni, amiknek van termék párjuk*/
+DELETE FROM ORDERS_00f
+WHERE sql_id IN 
+(
+SELECT  
+        b.sql_id
+FROM
+(
+SELECT *,
+		CASE 	WHEN SUBSTR(item_sku,1,2) = '17' THEN 'TAM' /*a szemvizsgálatok miatt kell ez a feltétel*/
+				ELSE item_sku 
+		END AS product_item_sku
+FROM ORDERS_00f
+WHERE item_type = 'T' OR (item_type = 'S' AND group_id NOT IN (139))
+) a LEFT JOIN
+(
+SELECT  sql_id,
+		erp_id,
+        CASE WHEN LOCATE('RABAT-',item_sku) > 0 THEN SUBSTRING_INDEX(item_sku,'RABAT-',-1)
+        WHEN LOCATE('RABAT_',item_sku) > 0 THEN SUBSTRING_INDEX(item_sku,'RABAT_',-1)      
+        END AS service_item_sku
+FROM  ORDERS_00f
+WHERE item_sku LIKE 'RABAT_%' OR item_sku LIKE 'RABAT-%'
+) b
+ON a.erp_id = b.erp_id 
+WHERE LOCATE(b.service_item_sku, a.product_item_sku) > 0
+);
+
+
+
+
+/*2. Tétel értékkel EGYENÉRÉTKŰ kupon: */
+/*2.1. A később törlendő RABAT sor megjelölése*/  
+DROP TABLE IF EXISTS ORDERS_00g;
+CREATE TABLE IF NOT EXISTS ORDERS_00g LIKE ORDERS_00f;
+ALTER TABLE ORDERS_00g ADD `rabat_sql_id` INT(1) NOT NULL;
+
+INSERT INTO ORDERS_00g
+SELECT 	x.*,
+        y.rabat_sql_id
+FROM ORDERS_00f AS x
+ LEFT JOIN
+(
+SELECT
+    DISTINCT b.*,
+    CASE WHEN ABS(a.item_net_value_in_currency) = ABS(b.item_net_value_in_currency) THEN 1 ELSE 0 END AS rabat_sql_id
+FROM
+(
+SELECT * /*a kedvezmény tételek nélküli tétel-lista*/
+FROM ORDERS_00f
+WHERE item_type = 'T' OR (item_type = 'S' AND group_id NOT IN (139))
+) a LEFT JOIN
+(
+SELECT  /*a kedvezmény tételek listája*/
+		sql_id,
+		erp_id,
+		item_net_value_in_currency
+FROM  ORDERS_00f
+WHERE item_sku IN ('VOUCHER5000', 'VOUCHER10000', 'KUPON', 'KUPONKOD', 'RABAT', '0', 'SZEPSZEMEK', 'RABAT_OTHER', 'RABAT_VAT') /* ez a lista a régi kedvezményeket kezeli (néhányuk group_id = 220) */
+OR group_id IN (139) /* ezen a kódon minden jövőbeni kedvezmény is bekerül */
+) b
+ON a.erp_id = b.erp_id
+WHERE ABS(a.item_net_value_in_currency) = ABS(b.item_net_value_in_currency)
+) y
+ON x.sql_id = y.sql_id
+;
+
+
+/*2.2 A RABAT értékének a kivonása hozzá tartozó tételből*/ 
+UPDATE
+  ORDERS_00g AS C
+  INNER JOIN (
+      SELECT  
+		a.sql_id,
+        b.rabat_sql_id,
+    0 AS item_net_value_in_currency
+FROM
+(
+SELECT * /*a kedvezmény tételek nélküli tétel-lista*/
+FROM ORDERS_00g
+WHERE item_type = 'T' OR (item_type = 'S' AND group_id NOT IN (139))
+) a LEFT JOIN
+(
+SELECT  /*a kedvezmény tételek listája*/
+		sql_id AS rabat_sql_id,
+		erp_id,
+		item_net_value_in_currency
+FROM  ORDERS_00g
+WHERE item_sku IN ('VOUCHER5000', 'VOUCHER10000', 'KUPON', 'KUPONKOD', 'RABAT', '0', 'SZEPSZEMEK', 'RABAT_OTHER', 'RABAT_VAT') /* ez a lista a régi kedvezményeket kezeli (néhányuk group_id = 220) */
+OR group_id IN (139) /* ezen a kódon minden jövőbeni kedvezmény is bekerül */ 
+) b
+ON a.erp_id = b.erp_id
+WHERE ABS(a.item_net_value_in_currency) = ABS(b.item_net_value_in_currency)
+  ) AS A ON C.sql_id = A.sql_id
+SET C.item_net_value_in_currency = A.item_net_value_in_currency
+;
+
+/*2.3. A RABAT sor törlése*/
+DELETE FROM ORDERS_00g WHERE rabat_sql_id = 1;
+
+
+
+/*3. Egész rendeléshez tartozó RABAT tétel*/
+UPDATE
+  ORDERS_00g AS C
+  INNER JOIN (
+SELECT
+    a.sql_id,
+    COALESCE((a.item_net_value_in_currency + b.rabat_item_net_value_in_currency*a.item_net_value_in_currency/c.sum_item_net_value_in_currency),0) AS item_net_value_in_currency
+FROM
+(
+SELECT * /*a eredeti (kedvezmény nélküli) tételek listája*/
+FROM ORDERS_00g
+WHERE item_type = 'T' OR (item_type = 'S' AND group_id NOT IN (139))
+) a,
+(
+SELECT  /*a kedvezmény tételek szummája*/
+		erp_id,
+		SUM(item_net_value_in_currency) AS rabat_item_net_value_in_currency
+FROM  ORDERS_00g
+WHERE item_sku IN ('VOUCHER5000', 'VOUCHER10000', 'KUPON', 'KUPONKOD', 'RABAT', '0', 'SZEPSZEMEK', 'RABAT_OTHER', 'RABAT_VAT') /* ez a lista a régi kedvezményeket kezeli (néhányuk group_id = 220) */
+OR group_id IN (139) /* ezen a kódon minden jövőbeni kedvezmény is bekerül */ 
+GROUP BY erp_id
+) b,
+(
+SELECT  /*az eredeti tételek szummája*/
+		erp_id,
+		SUM(item_net_value_in_currency) AS sum_item_net_value_in_currency
+FROM ORDERS_00g
+WHERE item_type = 'T' OR (item_type = 'S' AND group_id NOT IN (139))
+GROUP BY erp_id
+) c
+WHERE a.erp_id = b.erp_id
+AND a.erp_id = c.erp_id
+  ) AS A ON C.sql_id = A.sql_id
+SET C.item_net_value_in_currency = A.item_net_value_in_currency
+;
+
+/*3.1. A maradék RABAT sorok törlése*/ 
+DELETE FROM ORDERS_00g
+WHERE item_sku IN ('VOUCHER5000', 'VOUCHER10000', 'KUPON', 'KUPONKOD', 'RABAT', '0', 'TEST', 'SZEPSZEMEK', 'RABAT_OTHER', 'RABAT_VAT') /* ez a lista a régi kedvezményeket kezeli (néhányuk group_id = 220) */
+OR group_id IN (139) /* ezen a kódon minden jövőbeni kedvezmény is bekerül */ 
+;

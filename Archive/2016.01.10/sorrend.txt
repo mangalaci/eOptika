@@ -1,0 +1,19 @@
+1. 00 - Net Margin
+2. 00a_basetable
+3. 00b_shipping_name
+4. 00c_geographic_region
+5. 00d_gender
+6. 00e_purchase_reminder
+7. 00f_products
+8. 00g_discount_correction_1
+9. 00h_discount_correction_2
+10. 01_unique_emails
+11. 02_missing_emails
+12. 03_multiple_emails
+13. 04_user_id
+14. 05_newsletter
+15. 06_final_steps
+16.
+17.
+18.
+19.
