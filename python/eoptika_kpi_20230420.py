@@ -13,7 +13,7 @@ def adatolvasas(table_name):
     engine = create_engine('mysql+pymysql://laci:minimano@10.8.16.6:4619/eoptika_analytics')
     con = engine.connect()
     
-    ds = con.execute(''' SELECT * FROM {} '''.format(table_name))
+    ds = con.execute(''' SELECT * FROM {} limit 500000 '''.format(table_name))
     table_name = pd.DataFrame(ds.fetchall())
     table_name.columns = ds.keys()
     
@@ -34,6 +34,7 @@ IN_test_users = adatolvasas('IN_test_users')
 IN_user_type = adatolvasas('IN_user_type')
 IN_country_coding = adatolvasas('IN_country_coding')
 IN_city_coding = adatolvasas('IN_city_coding')
+IN_eu_cities = adatolvasas('IN_eu_cities')
 
 
 ####  IN_country_coding egyedivé tétele shipping_country-ra ###
@@ -283,7 +284,8 @@ column_names = ['erp_id',
                 'shipping_zip_code',
                 'billing_zip_code',
                 'shipping_method',
-                'shipping_phone']                ]
+                'shipping_phone']
+     
 INVOICES_00_std = pd.DataFrame(columns=column_names)
 INVOICES_00_std[column_names] = INVOICES_00[column_names]
 
@@ -332,11 +334,6 @@ def match_pattern(name):
 
 INVOICES_00_std['item_B2C_private_insurance'] = INVOICES_00_std.apply(lambda row: match_pattern(row['shipping_name'].upper()) or match_pattern(row['billing_name'].upper()), axis=1)
 
-
-INVOICES_00_std['item_B2C_private_insurance'].unique()
-
-
-selected_rows = INVOICES_00_std[INVOICES_00_std['item_B2C_private_insurance'] != ''].sample(50)
 
 
 # mező:  SHIPPING_NAME_TRIM és billing_name_trim
@@ -457,7 +454,7 @@ pattern_dict = {
     r'^70': '+3670',
     r'^3600': '',
     r'^\+3600': '',
-    r' ': '',    
+    r' ': '',
     r'-': ''
 }
 
@@ -474,20 +471,21 @@ INVOICES_00_std['shipping_phone_clean'] = INVOICES_00_std.apply(lambda row: repl
 
 pattern = {
     r'\+?(36|06)[ /.-]*(\d{1,2})[ /.-]*(\d+)': 'Hungary',
-    r'\+?(39)[ /.-]*(\d{1,2})[ /.-]*(\d+)': 'Italy'    
+    r'\+?(39)[ /.-]*(\d{1,2})[ /.-]*(\d+)': 'Italy'
     }
 
 
 def clean_phone_number(phone_number, country):
-        for regex, country_code in pattern.items():
-            match = re.search(regex, phone_number)
-            if match:
-                if country == 'Hungary':
-                    return '+36' + match.group(2) + match.group(3)
-                elif country == 'Italy':
-                    return '+39' + match.group(2) + match.group(3)
-                else:
-                    return ''
+    for regex, country_code in pattern.items():
+        match = re.search(regex, phone_number)
+        if match:
+            if country == 'Hungary':
+                return '+36' + match.group(2) + match.group(3)
+            elif country == 'Italy':
+                return '+39' + match.group(2) + match.group(3)
+            else:
+                return phone_number  # return the original phone number
+    return phone_number  # return the original phone number if there is no match
 
 
 
@@ -501,31 +499,62 @@ selected_rows = INVOICES_00_std.loc[INVOICES_00_std['shipping_country_standardiz
 
 
 
-'SO13/02763'
-'SO12/00484'
-'SO11/02023'
-SO15/02227
-SO12/00444
+####  téves ORSZÁG javítás  ###
+#a város külföldi, viszont országnak Magyarország van beírva
+city_country_dict = {}
 
+# Assuming IN_eu_cities is a DataFrame with columns 'Country' and 'City'
+for _, row in IN_eu_cities.iterrows():
+    city_country_dict[row['City']] = row['Country']
 
-
-string = '+393920281784'
-
-strings = ['36 70 2802555', '+36-20-3888984', '+36702802555', '+36-1-4370265']
-pattern = r'\+?36[ .-]?(\d{1,2})[ .-]?(\d+)'
-
-for string in strings:
-    match = re.search(pattern, string)
-    if match:
-        phone_number =  '+36' + match.group(1) + match.group(2)
-        print(phone_number)
+def correct_country(city):
+    city = city.lower()  # convert to lowercase
+    if city in city_country_dict:
+        return city_country_dict[city]
     else:
-        print("No match")
+        return None
 
 
 
-selected_rows = INVOICES_00_std.sample(500)
+for index, row in INVOICES_00_std.iterrows():
+    corrected_country = correct_country(row['shipping_city'])
+    if corrected_country:
+        INVOICES_00_std.loc[index, 'shipping_country_standardized'] = corrected_country
 
+
+for index, row in INVOICES_00_std.iterrows():
+    corrected_country = correct_country(row['billing_city'])
+    if corrected_country:
+        INVOICES_00_std.loc[index, 'billing_country_standardized'] = corrected_country
+
+
+
+
+
+selected_rows[['billing_city','billing_country_standardized']].head()
+
+
+
+
+
+INVOICES_00.head()
+
+
+
+
+INVOICES_00['shipping_city'].head()
+
+
+
+# Update missing values in shipping_country_standardized column
+missing_values = merged_df['shipping_country_standardized'].isnull()
+merged_df.loc[missing_values, 'shipping_country_standardized'] = merged_df.loc[missing_values, 'Country']
+
+# Drop unnecessary columns
+merged_df.drop(['City', 'Country'], axis=1, inplace=True)
+
+# Save the updated dataframe to a new file
+merged_df.to_csv('merged_INVOICES_00_std_IN_eu_cities.csv', index=False)
 
 
 
@@ -547,3 +576,22 @@ INVOICES_00_filtered = INVOICES_00[mask]
 
 rer = INVOICES_00[INVOICES_00['shipping_country_standardized'].isna() == True].tail(100)
 
+
+string = '+393920281784'
+
+strings = ['36 70 2802555', '+36-20-3888984', '+36702802555', '+36-1-4370265']
+pattern = r'\+?36[ .-]?(\d{1,2})[ .-]?(\d+)'
+
+for string in strings:
+    match = re.search(pattern, string)
+    if match:
+        phone_number =  '+36' + match.group(1) + match.group(2)
+        print(phone_number)
+    else:
+        print("No match")
+
+'SO13/02763'
+'SO12/00484'
+'SO11/02023'
+SO15/02227
+SO12/00444
